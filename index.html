@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventory Replenishment Planner</title>
+  <style>
+    :root { --ink:#182230; --muted:#667085; --line:#e4e7ec; --blue:#2457d6; --bg:#f5f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 Arial, sans-serif; }
+    header { background:linear-gradient(120deg,#172554,#2563eb); color:white; padding:30px 20px; }
+    header .wrap, main { max-width:1120px; margin:auto; }
+    h1 { margin:0 0 5px; font-size:clamp(24px,4vw,34px); }
+    header p { margin:0; color:#dbeafe; }
+    main { padding:24px 18px 40px; }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-bottom:22px; }
+    .card, .panel { background:white; border:1px solid var(--line); border-radius:14px; box-shadow:0 4px 16px #1018280a; }
+    .stat { padding:20px; }
+    .stat .label { color:var(--muted); font-size:14px; }
+    .stat .value { font-size:30px; font-weight:700; margin-top:5px; }
+    .panel { padding:22px; margin-bottom:22px; }
+    h2 { margin:0 0 16px; font-size:20px; }
+    .form-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+    label { display:block; font-size:13px; font-weight:600; color:#344054; margin-bottom:6px; }
+    input, select { width:100%; border:1px solid #cfd4dc; border-radius:8px; padding:10px 11px; font:inherit; background:white; }
+    input:focus, select:focus { outline:2px solid #bfd0ff; border-color:var(--blue); }
+    button, .btn { display:inline-block; border:0; border-radius:8px; padding:10px 14px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; text-align:center; }
+    .primary { background:var(--blue); color:white; }
+    .secondary { background:#eef2ff; color:#2446a8; }
+    .danger { background:#fff0f0; color:#b42318; }
+    .form-actions { margin-top:14px; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px; }
+    .toolbar input { flex:1; min-width:180px; }
+    .toolbar select { width:auto; min-width:160px; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; min-width:850px; }
+    th, td { text-align:left; padding:12px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    th { color:#475467; background:#f9fafb; font-size:13px; }
+    tbody tr:last-child td { border-bottom:0; }
+    .badge { display:inline-block; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; }
+    .low { color:#b42318; background:#fee4e2; }
+    .in { color:#027a48; background:#d1fadf; }
+    .actions { display:flex; gap:7px; align-items:center; }
+    .actions form { margin:0; }
+    .empty { color:var(--muted); text-align:center; padding:25px; }
+    .hint { color:var(--muted); font-size:13px; margin-top:10px; }
+    @media (max-width:800px) { .form-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .stats { grid-template-columns:1fr; gap:10px; } .stat { padding:15px; } .stat .value { font-size:25px; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Inventory Replenishment Planner</h1>
+    <p>Track stock levels, identify low-stock products, and plan replenishment.</p>
+  </div>
+</header>
+<main>
+  <section class="stats">
+    <div class="card stat"><div class="label">Total Products</div><div class="value">{{ total_products }}</div></div>
+    <div class="card stat"><div class="label">Low Stock Items</div><div class="value">{{ low_stock }}</div></div>
+    <div class="card stat"><div class="label">Total Units in Stock</div><div class="value">{{ total_units }}</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Add New Product</h2>
+    <form action="{{ url_for('add_product') }}" method="post">
+      <div class="form-grid">
+        <div><label for="name">Product Name</label><input id="name" name="name" required maxlength="100" placeholder="e.g. Keyboard"></div>
+        <div><label for="quantity">Current Quantity</label><input id="quantity" name="quantity" type="number" min="0" step="1" required value="0"></div>
+        <div><label for="reorder_level">Reorder Level</label><input id="reorder_level" name="reorder_level" type="number" min="0" step="1" required value="10"></div>
+        <div><label for="daily_demand">Daily Demand</label><input id="daily_demand" name="daily_demand" type="number" min="0" step="1" required value="1"></div>
+        <div><label for="lead_time">Lead Time (days)</label><input id="lead_time" name="lead_time" type="number" min="0" step="1" required value="3"></div>
+      </div>
+      <div class="form-actions"><button class="primary" type="submit">+ Add Product</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Inventory List</h2>
+    <div class="toolbar">
+      <input id="searchInput" type="search" placeholder="Search by product name..." oninput="filterProducts()" aria-label="Search products">
+      <select id="statusFilter" onchange="filterProducts()" aria-label="Filter by stock status">
+        <option value="all">All Products</option>
+        <option value="low">Low Stock</option>
+        <option value="in">In Stock</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="inventoryTable">
+        <thead><tr><th>Product</th><th>Quantity</th><th>Reorder Level</th><th>Daily Demand</th><th>Lead Time</th><th>Status</th><th>Suggested Reorder</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for product in products %}
+          {% set suggested = [0, product["reorder_level"] + product["daily_demand"] * product["lead_time"] - product["quantity"]] | max %}
+          {% set is_low = product["quantity"] <= product["reorder_level"] %}
+          <tr data-name="{{ product['name']|lower }}" data-status="{{ 'low' if is_low else 'in' }}">
+            <td><strong>{{ product["name"] }}</strong></td>
+            <td>{{ product["quantity"] }}</td>
+            <td>{{ product["reorder_level"] }}</td>
+            <td>{{ product["daily_demand"] }}</td>
+            <td>{{ product["lead_time"] }} days</td>
+            <td><span class="badge {{ 'low' if is_low else 'in' }}">{{ "Low Stock" if is_low else "In Stock" }}</span></td>
+            <td><strong>{{ suggested }}</strong></td>
+            <td><div class="actions">
+              <a class="btn secondary" href="{{ url_for('edit_product', product_id=product['id']) }}">Edit</a>
+              <form action="{{ url_for('delete_product', product_id=product['id']) }}" method="post" onsubmit="return confirm('Delete this product?');">
+                <button class="danger" type="submit">Delete</button>
+              </form>
+            </div></td>
+          </tr>
+        {% else %}
+          <tr id="emptyRow"><td colspan="8" class="empty">No products yet. Add your first product above.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Suggested reorder = max(0, reorder level + daily demand × lead time − current quantity).</p>
+  </section>
+</main>
+<script>
+function filterProducts() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  const rows = document.querySelectorAll('#inventoryTable tbody tr[data-name]');
+  rows.forEach(row => {
+    const nameMatch = row.dataset.name.includes(query);
+    const statusMatch = status === 'all' || row.dataset.status === status;
+    row.style.display = nameMatch && statusMatch ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>
